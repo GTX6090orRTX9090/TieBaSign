@@ -225,7 +225,7 @@ def main():
             client_sign(i, tbs, j["id"], j["name"])
         logger.info("完成第" + str(n) + "个用户签到")
    # send_email(favorites)
-    logger.info("所有用户签到结束")
+    logger.info("所有用户签到结束。")
 
 
 if __name__ == '__main__':
