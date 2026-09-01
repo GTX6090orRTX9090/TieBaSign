@@ -6,6 +6,7 @@ import time
 import copy
 import logging
 import random
+from datetime import datetime, timezone, timedelta
 
 import smtplib
 from email.mime.text import MIMEText
@@ -182,7 +183,8 @@ def send_email(sign_list):
     TO = ENV['TO'].split('#')
     AUTH = ENV['AUTH']
     length = len(sign_list)
-    subject = f"{time.strftime('%Y-%m-%d', time.localtime())} 签到{length}个贴吧"
+    beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
+    subject = f"{beijing_time} 签到{length}个贴吧"
     body = """
     <style>
     .child {
