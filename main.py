@@ -6,7 +6,6 @@ import time
 import copy
 import logging
 import random
-from datetime import datetime, timezone, timedelta
 
 import smtplib
 from email.mime.text import MIMEText
@@ -183,8 +182,7 @@ def send_email(sign_list):
     TO = ENV['TO'].split('#')
     AUTH = ENV['AUTH']
     length = len(sign_list)
-    beijing_time = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
-    subject = f"{beijing_time} 签到{length}个贴吧"
+    subject = subject = f"{time.strftime('%Y-%m-%d', time.localtime())} 签到{length}个贴吧"
     body = """
     <style>
     .child {
@@ -214,6 +212,8 @@ def send_email(sign_list):
     smtp.quit()
 
 def main():
+    os.environ['TZ'] = 'Asia/Shanghai'
+    time.tzset() 
     if ('BDUSS' not in ENV):
         logger.error("未配置BDUSS")
         return
@@ -228,7 +228,7 @@ def main():
         logger.info("完成第" + str(n) + "个用户签到")
    # send_email(favorites)
     logger.info("所有用户签到结束。")
-
+    
 
 if __name__ == '__main__':
     main()
