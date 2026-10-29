@@ -63,16 +63,14 @@ def get_tbs(bduss):
             logger.error(f"获取tbs失败，接口返回: {resp}")
             return None
     except Exception as e:
-        logger.error(f"获取tbs出错: {e}")   
+        logger.error(f"获取tbs出错: {e}")
         return None
     logger.info("获取tbs结束")
     return tbs
 
 
-
 def get_favorite(bduss):
     logger.info("获取关注的贴吧开始")
-    # 客户端关注的贴吧
     returnData = {}
     i = 1
     data = {
@@ -93,17 +91,20 @@ def get_favorite(bduss):
     try:
         res = s.post(url=LIKIE_URL, data=data, timeout=5).json()
     except Exception as e:
-        logger.error(f"获取关注的贴吧出错: {e}")  
+        logger.error(f"获取关注的贴吧出错: {e}")
         return []
+
     returnData = res
     if 'forum_list' not in returnData:
-        returnData['forum_list'] = []
-    if res['forum_list'] == []:
-        return {'gconforum': [], 'non-gconforum': []}
+        returnData['forum_list'] = {}
+    if not returnData['forum_list']:
+        logger.warning(f"未获取到任何关注的贴吧，接口返回: {res}")
+        return []
     if 'non-gconforum' not in returnData['forum_list']:
         returnData['forum_list']['non-gconforum'] = []
     if 'gconforum' not in returnData['forum_list']:
         returnData['forum_list']['gconforum'] = []
+
     while 'has_more' in res and res['has_more'] == '1':
         i = i + 1
         data = {
@@ -121,11 +122,13 @@ def get_favorite(bduss):
             'vcode_tag': '11',
         }
         data = encodeData(data)
+        try:
+            res = s.post(url=LIKIE_URL, data=data, timeout=5).json()
         except Exception as e:
             logger.error(f"获取关注的贴吧出错: {e}")
-            continue
+            break
         if 'forum_list' not in res:
-            continue
+            break
         if 'non-gconforum' in res['forum_list']:
             returnData['forum_list']['non-gconforum'].append(res['forum_list']['non-gconforum'])
         if 'gconforum' in res['forum_list']:
@@ -152,7 +155,7 @@ def get_favorite(bduss):
                     t.append(j)
         else:
             t.append(i)
-    logger.info("获取关注的贴吧结束")
+    logger.info(f"获取关注的贴吧结束，共 {len(t)} 个")
     return t
 
 
@@ -167,7 +170,6 @@ def encodeData(data):
 
 
 def client_sign(bduss, tbs, fid, kw):
-    # 客户端签到
     logger.info("开始签到贴吧：" + kw)
     data = copy.copy(SIGN_DATA)
     data.update({BDUSS: bduss, FID: fid, KW: kw, TBS: tbs, TIMESTAMP: str(int(time.time()))})
@@ -177,10 +179,10 @@ def client_sign(bduss, tbs, fid, kw):
     except Exception as e:
         logger.error(f"签到「{kw}」失败: {e}")
         return {"error": str(e)}
-    # 记录百度返回的业务错误码，方便判断 BDUSS 是否失效
     if str(res.get("error_code", "0")) != "0":
         logger.warning(f"签到「{kw}」返回错误码 {res.get('error_code')}: {res.get('error_msg')}")
     return res
+
 
 def send_email(sign_list):
     if ('HOST' not in ENV or 'FROM' not in ENV or 'TO' not in ENV or 'AUTH' not in ENV):
@@ -191,7 +193,7 @@ def send_email(sign_list):
     TO = ENV['TO'].split('#')
     AUTH = ENV['AUTH']
     length = len(sign_list)
-    subject = subject = f"{time.strftime('%Y-%m-%d', time.localtime())} 签到{length}个贴吧"
+    subject = f"{time.strftime('%Y-%m-%d', time.localtime())} 签到{length}个贴吧"
     body = """
     <style>
     .child {
@@ -220,6 +222,7 @@ def send_email(sign_list):
     smtp.sendmail(FROM, TO, msg.as_string())
     smtp.quit()
 
+
 def main():
     os.environ['TZ'] = 'Asia/Shanghai'
     time.tzset()
@@ -230,16 +233,19 @@ def main():
     for n, i in enumerate(b):
         logger.info("开始签到第" + str(n) + "个用户")
         tbs = get_tbs(i)
-        if not tbs:                      
+        if not tbs:
             logger.error(f"第{n}个用户 tbs 获取失败（BDUSS 可能已过期），跳过")
             continue
         favorites = get_favorite(i)
+        if not favorites:
+            logger.warning(f"第{n}个用户没有可签到的贴吧")
+            continue
         for j in favorites:
             time.sleep(random.randint(1, 5))
             client_sign(i, tbs, j["id"], j["name"])
         logger.info("完成第" + str(n) + "个用户签到")
     logger.info("所有用户签到结束。")
-    
+
 
 if __name__ == '__main__':
     main()
