@@ -57,13 +57,17 @@ def get_tbs(bduss):
     headers = copy.copy(HEADERS)
     headers.update({COOKIE: EMPTY_STR.join([BDUSS, EQUAL, bduss])})
     try:
-        tbs = s.get(url=TBS_URL, headers=headers, timeout=5).json()[TBS]
+        resp = s.get(url=TBS_URL, headers=headers, timeout=5).json()
+        tbs = resp.get(TBS)
+        if not tbs:
+            logger.error(f"获取tbs失败，接口返回: {resp}")
+            return None
     except Exception as e:
-        logger.error("获取tbs出错" + e)
-        logger.info("重新获取tbs开始")
-        tbs = s.get(url=TBS_URL, headers=headers, timeout=5).json()[TBS]
+        logger.error(f"获取tbs出错: {e}")   
+        return None
     logger.info("获取tbs结束")
     return tbs
+
 
 
 def get_favorite(bduss):
@@ -89,7 +93,7 @@ def get_favorite(bduss):
     try:
         res = s.post(url=LIKIE_URL, data=data, timeout=5).json()
     except Exception as e:
-        logger.error("获取关注的贴吧出错" + e)
+        logger.error(f"获取关注的贴吧出错: {e}")  
         return []
     returnData = res
     if 'forum_list' not in returnData:
@@ -117,10 +121,8 @@ def get_favorite(bduss):
             'vcode_tag': '11',
         }
         data = encodeData(data)
-        try:
-            res = s.post(url=LIKIE_URL, data=data, timeout=5).json()
         except Exception as e:
-            logger.error("获取关注的贴吧出错" + e)
+            logger.error(f"获取关注的贴吧出错: {e}")
             continue
         if 'forum_list' not in res:
             continue
@@ -170,7 +172,14 @@ def client_sign(bduss, tbs, fid, kw):
     data = copy.copy(SIGN_DATA)
     data.update({BDUSS: bduss, FID: fid, KW: kw, TBS: tbs, TIMESTAMP: str(int(time.time()))})
     data = encodeData(data)
-    res = s.post(url=SIGN_URL, data=data, timeout=5).json()
+    try:
+        res = s.post(url=SIGN_URL, data=data, timeout=5).json()
+    except Exception as e:
+        logger.error(f"签到「{kw}」失败: {e}")
+        return {"error": str(e)}
+    # 记录百度返回的业务错误码，方便判断 BDUSS 是否失效
+    if str(res.get("error_code", "0")) != "0":
+        logger.warning(f"签到「{kw}」返回错误码 {res.get('error_code')}: {res.get('error_msg')}")
     return res
 
 def send_email(sign_list):
@@ -213,20 +222,22 @@ def send_email(sign_list):
 
 def main():
     os.environ['TZ'] = 'Asia/Shanghai'
-    time.tzset() 
+    time.tzset()
     if ('BDUSS' not in ENV):
         logger.error("未配置BDUSS")
         return
     b = ENV['BDUSS'].split('#')
     for n, i in enumerate(b):
-        logger.info("开始签到第" + str(n) + "个用户" + i)
+        logger.info("开始签到第" + str(n) + "个用户")
         tbs = get_tbs(i)
+        if not tbs:                      
+            logger.error(f"第{n}个用户 tbs 获取失败（BDUSS 可能已过期），跳过")
+            continue
         favorites = get_favorite(i)
         for j in favorites:
-            time.sleep(random.randint(1,5))
+            time.sleep(random.randint(1, 5))
             client_sign(i, tbs, j["id"], j["name"])
         logger.info("完成第" + str(n) + "个用户签到")
-   # send_email(favorites)
     logger.info("所有用户签到结束。")
     
 
