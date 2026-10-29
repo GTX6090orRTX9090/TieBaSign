@@ -2,8 +2,8 @@
 
 ## 今日签到状态
 
-![Baidu Tieba Auto Sign](https://github.com/gwtak/TieBaSign)
-![Baidu Tieba Auto Sign](img/tieba.png) 
+![Baidu Tieba Auto Sign](img/tieba.png)
+
 ## 使用说明
 
 1. Fork 本仓库，然后点击你的仓库右上角的 Settings，找到 Secrets 这一项，添加一个库秘密变量。其中 `BDUSS` 存放你的 BDUSS。支持同时添加多个帐户，BDUSS 之间用 `#` 隔开即可。
