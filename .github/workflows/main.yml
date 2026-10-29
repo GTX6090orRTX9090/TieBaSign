@@ -6,6 +6,7 @@ on:
       - main
   schedule:
     - cron: '0 18 * * *' # 每天 UTC 18:00 → 北京时间次日 2:00
+    - cron: '0 6 * * *'
 
 jobs:
   tieba_sign:
