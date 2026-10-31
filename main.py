@@ -29,6 +29,11 @@ ENV = os.environ
 # 签到方式：app=手机版逐吧签到（默认）；web=网页版一键签到 msign
 SIGN_MODE = (ENV.get('SIGN_MODE') or 'app').strip().lower()
 
+# 日志里是否显示吧名。默认不显示（公开仓库的 Actions 日志人人可见）
+# 本地想看就设 SHOW_FORUM_NAME=1
+SHOW_NAME = (ENV.get('SHOW_FORUM_NAME') or '').strip().lower() in ('1', 'true', 'yes')
+IN_ACTIONS = (ENV.get('GITHUB_ACTIONS') or '').strip().lower() == 'true'
+
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36',
 }
@@ -58,6 +63,12 @@ SIGN = "sign"
 KW = "kw"
 
 s = requests.Session()
+
+
+def mask(value):
+    """在 GitHub Actions 日志里把该值打码（后续出现的地方都显示 ***）"""
+    if IN_ACTIONS and value:
+        print(f"::add-mask::{value}", flush=True)
 
 
 def check_login(bduss):
@@ -150,26 +161,28 @@ def sign_all(bduss):
     return True
 
 
-def client_sign(bduss, tbs, fid, kw):
+def client_sign(bduss, tbs, fid, kw, label=None):
     """手机版（App 协议）单个吧签到，需要 tbs
 
     域名 tiebac.baidu.com + _client_type=2 + 参数签名，就是手机客户端的签到请求。
+    label 是日志里用的标识（默认已脱敏，不含吧名）。
     """
+    shown = label or (kw if SHOW_NAME else '该吧')
     data = copy.copy(SIGN_DATA)
     data.update({BDUSS: bduss, FID: str(fid), KW: kw, TBS: tbs, TIMESTAMP: str(int(time.time()))})
     data = encodeData(data)
     try:
         res = s.post(url=SIGN_URL, data=data, cookies={BDUSS: bduss}, headers=HEADERS, timeout=10).json()
     except Exception as e:
-        logger.error(f"签到「{kw}」失败: {e}")
+        logger.error(f"签到「{shown}」失败: {e}")
         return {"error": str(e)}
     if str(res.get("error_code", "0")) != "0":
-        logger.warning(f"签到「{kw}」返回错误码 {res.get('error_code')}: {res.get('error_msg')}")
+        logger.warning(f"签到「{shown}」返回错误码 {res.get('error_code')}: {res.get('error_msg')}")
     else:
         info = res.get('user_info') or {}
         bonus = info.get('sign_bonus_point')
         extra = f"，+{bonus} 经验" if bonus else ""
-        logger.info(f"签到「{kw}」成功{extra}")
+        logger.info(f"签到「{shown}」成功{extra}")
     return res
 
 
@@ -199,7 +212,7 @@ def send_email(sign_list):
         body += f"""
         <div class="child">
             <div class="name"> 贴吧名称: { i['name'] }</div>
-            <div class="slogan"> 贴吧简介: { i['slogan'] }</div>
+            <div class="slogan"> 签到结果: { i['slogan'] }</div>
         </div>
         <hr>
         """
@@ -220,8 +233,12 @@ def main():
         logger.error("未配置BDUSS")
         return
     sign_list = []
-    for n, bduss in enumerate(ENV['BDUSS'].split('#')):
+    for n, raw in enumerate(ENV['BDUSS'].split('#')):
         logger.info("开始签到第" + str(n) + "个用户")
+        bduss = (raw or '').strip()
+        if not bduss:
+            logger.error(f"第{n}个用户的 BDUSS 为空，跳过")
+            continue
         is_login, tbs = check_login(bduss)
         if not is_login:
             logger.error(f"第{n}个用户 BDUSS 无效或已过期，跳过（请重新获取 BDUSS）")
@@ -240,7 +257,9 @@ def main():
             logger.info(f"第{n}个用户开始手机版签到，共 {len(todo)} 个吧")
             ok = 0
             for idx, f in enumerate(todo, 1):
-                res = client_sign(bduss, tbs, f['fid'], f['name'])
+                label = f['name'] if SHOW_NAME else f"第{idx}/{len(todo)}个吧"
+                mask(f['name'])
+                res = client_sign(bduss, tbs, f['fid'], f['name'], label)
                 if str(res.get('error_code', '0')) == '0':
                     f['is_signed'] = True
                     ok += 1
@@ -250,9 +269,12 @@ def main():
             logger.info(f"第{n}个用户手机版签到完成 {ok}/{len(todo)}")
 
         # 以服务端最终状态为准（已签到/签到失败）
-        for f in get_favorite(bduss) or favorites:
+        for idx, f in enumerate(get_favorite(bduss) or favorites, 1):
+            label = f['name'] if SHOW_NAME else f"第{idx}个吧"
+            mask(f['name'])
             sign_list.append({
-                'name': f['name'],
+                'name': f['name'],      # 邮件里用（不公开）
+                'label': label,         # 日志里用
                 'slogan': '签到成功' if f['is_signed'] else '签到失败',
             })
         logger.info("完成第" + str(n) + "个用户签到")
@@ -260,7 +282,7 @@ def main():
     failed = [i for i in sign_list if i['slogan'] != '签到成功']
     logger.info(f"所有用户签到结束：共 {len(sign_list)} 个吧，失败 {len(failed)} 个")
     for i in failed:
-        logger.warning(f"未签到: {i['name']}")
+        logger.warning(f"未签到: {i['label']}")
 
 
 if __name__ == '__main__':
